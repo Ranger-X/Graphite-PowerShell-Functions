@@ -52,7 +52,7 @@ Function Start-StatsToGraphite
         [switch]$TestMode,
         [switch]$ExcludePerfCounters = $false,
         [switch]$SqlMetrics = $false,
-        [switch]$TopProcesses = $false
+        [switch]$TopProcesses = $true
     )
 
     # Run The Load XML Config Function
@@ -210,7 +210,7 @@ Function Start-StatsToGraphite
 
         if($TopProcesses)
         {
-            $samples = Get-WMIObject Win32_PerfFormattedData_PerfProc_Process | where {$_.Name -ne “Idle” -and $_.Name -ne "_Total"} | sort PercentProcessorTime -desc | select Name,IDProcess,PercentProcessorTime | Select -First 10
+            $samples = Get-WMIObject Win32_PerfFormattedData_PerfProc_Process | where {$_.Name -ne "Idle" -and $_.Name -ne "_Total"} | sort PercentProcessorTime -desc | select Name,IDProcess,PercentProcessorTime | Select -First 10
 
             #Name            IDProcess PercentProcessorTime
             #----            --------- --------------------
@@ -248,7 +248,7 @@ Function Start-StatsToGraphite
                     $cleanNameOfProc = ConvertTo-GraphiteMetric -MetricToClean $procName -HostName $Config.NodeHostName -MetricReplacementHash $Config.MetricReplace
 
                     # Build the full metric path
-                    $metricPath = $Config.MetricPath + '.' + $cleanNameOfProc
+                    $metricPath = $Config.MetricPath + '.' + $Config.NodeHostName + '.top_process.' + $cleanNameOfProc
 
                     $metricsToSend[$metricPath] = $proc.PercentProcessorTime
                 }
