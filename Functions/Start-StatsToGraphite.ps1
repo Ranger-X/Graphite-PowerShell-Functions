@@ -51,7 +51,8 @@ Function Start-StatsToGraphite
         [Parameter(Mandatory = $false)]
         [switch]$TestMode,
         [switch]$ExcludePerfCounters = $false,
-        [switch]$SqlMetrics = $false
+        [switch]$SqlMetrics = $false,
+        [switch]$TopProcesses = $false
     )
 
     # Run The Load XML Config Function
@@ -206,6 +207,62 @@ Function Start-StatsToGraphite
                 } #end foreach Query
             } #end foreach SQL Server
         }#endif SqlMetrics
+
+        if($TopProcesses)
+        {
+            $samples = Get-WMIObject Win32_PerfFormattedData_PerfProc_Process | where {$_.Name -ne “Idle” -and $_.Name -ne "_Total"} | sort PercentProcessorTime -desc | select Name,IDProcess,PercentProcessorTime | Select -First 10
+
+            #Name            IDProcess PercentProcessorTime
+            #----            --------- --------------------
+            #powershell           1296                    6
+            #svchost#5            2484                    6
+            #smss                  284                    0
+            #snmp                 1812                    0
+            #services              540                    0
+            #ServerManager#1      3372                    0
+            #ServerManager#2     23976                    0
+            #ServerManager#3      3496                    0
+            #spoolsv              1036                    0
+            #svchost#3             616                    0
+
+            # Verbose
+            Write-Verbose "Top process stats collected"
+
+            # Loop Through All The Counters
+            foreach ($proc in $samples)
+            {
+                $procName = $proc.Name + "_" + $proc.IDProcess
+
+                if ($Config.ShowOutput)
+                {
+                    Write-Verbose "Process name: $($procName)"
+                }
+
+                # Create Stopwatch for Filter Time Period
+                $filterStopWatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+                # Check if there are filters or not
+                if ([string]::IsNullOrWhiteSpace($Config.Filters) -or $procName -notmatch [regex]$Config.Filters)
+                {
+                    # Run the sample path through the ConvertTo-GraphiteMetric function
+                    $cleanNameOfProc = ConvertTo-GraphiteMetric -MetricToClean $procName -HostName $Config.NodeHostName -MetricReplacementHash $Config.MetricReplace
+
+                    # Build the full metric path
+                    $metricPath = $Config.MetricPath + '.' + $cleanNameOfProc
+
+                    $metricsToSend[$metricPath] = $proc.PercentProcessorTime
+                }
+                else
+                {
+                    Write-Verbose "Filtering out Process with Name: $($procName) as it matches something in the filters."
+                }
+
+                $filterStopWatch.Stop()
+
+                Write-Verbose "Job Execution Time To Get to Clean Processes: $($filterStopWatch.Elapsed.TotalSeconds) seconds."
+
+            }# End for each sample loop
+        }# end if TopProcesses
 
         # Send To Graphite Server
 
